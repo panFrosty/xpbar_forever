@@ -1,0 +1,7 @@
+## Interface: 16001, 120100
+## Title: XPBar
+## Notes: Minimal XP bar with pending quest turn-in XP.
+## Version: 1.0
+## SavedVariables: XPBarDB
+
+XPBar.lua
