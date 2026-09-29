@@ -261,14 +261,16 @@ local function Update()
 	local pending, incomplete, quests = QuestXP()
 	pending = math.min(pending, headroom)
 	incomplete = math.min(incomplete, headroom - pending)
-	local rested = math.min(GetXPExhaustion() or 0, headroom - pending - incomplete)
+	-- the full pool is reported; only the drawn segment is clamped to what fits
+	local rested = GetXPExhaustion() or 0
 	stats.rested, stats.pending, stats.incomplete, stats.quests = rested, pending, incomplete, quests
 
 	-- stacked in order, as the Luxthos bar does:
 	-- fill, then completed quests, then incomplete quests, then rested
 	SetSegment(questTex, cur, pending, max)
 	SetSegment(incompleteTex, cur + pending, incomplete, max)
-	SetSegment(restedTex, cur + pending + incomplete, rested, max)
+	SetSegment(restedTex, cur + pending + incomplete,
+		math.min(rested, headroom - pending - incomplete), max)
 
 	if cur > 0 then
 		spark:ClearAllPoints()
