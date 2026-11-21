@@ -16,9 +16,9 @@ This project is not affiliated with or endorsed by Luxthos, Daemoos, or Blizzard
 
 | Element | Value |
 |---|---|
-| Completed quest XP | `\|cFFFF9700` orange |
+| Turn-in XP | `\|cFFFF9700` orange |
 | Rested XP | `\|cFF4F90FF` blue |
-| Segment order | fill → completed quests → incomplete quests → rested |
+| Segment order | fill → turn-in XP → in-progress quest XP → rested |
 | Font | Friz Quadrata, outlined |
 | Layout | level left, `cur / total (remaining)` centre, percentage right |
 
@@ -26,8 +26,8 @@ The current XP fill is purple, which is this addon's own choice rather than the 
 
 ## Features
 
-- Purple XP fill with stacked segments for completed quests, in-progress quests and the rested pool
-- `Level N` / `cur / total (remaining)` / `pct% (pct% incl. pending quests)` inside the bar
+- Purple XP fill with stacked segments for turn-in XP, in-progress quest XP and the rested pool
+- `Level N` / `cur / total (remaining)` / `pct% (pct% incl. turn-in XP)` inside the bar
 - `Leveling in: <time> (<n> XP/Hour)` and `Completed: n% - Rested: n%` below the bar
 - `Time this level` and `Time this session` above the bar
 - Hover tooltip with the full breakdown
@@ -39,7 +39,7 @@ The current XP fill is purple, which is this addon's own choice rather than the 
 Copy the `XPBar` folder into:
 
 ```
-World of Warcraft/_classic_beta_/Interface/AddOns/XPBar/
+World of Warcraft/_forever_/Interface/AddOns/XPBar/
 ```
 
 so that `XPBar.toc` and `XPBar.lua` sit directly inside it.

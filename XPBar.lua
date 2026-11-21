@@ -1,7 +1,7 @@
 local BAR_WIDTH, BAR_HEIGHT = 600, 28
 
--- Colours taken from the Luxthos Experience Bar: |cFFFF9700 completed quests,
--- |cFF4F90FF rested. Incomplete quests reuse the quest colour, faded.
+-- Colours taken from the Luxthos Experience Bar: |cFFFF9700 turn-in XP,
+-- |cFF4F90FF rested. In-progress quest XP reuses the quest colour, faded.
 local COL_XP = { 0.62, 0.30, 0.90 }
 local COL_QUEST = { 1.00, 0.592, 0.00 }
 local COL_RESTED = { 0.31, 0.565, 1.00 }
@@ -13,8 +13,8 @@ local IsQuestComplete = C_QuestLog.IsComplete
 local BigNum = BreakUpLargeNumbers or FormatLargeNumber or tostring
 
 local db
-local stats = { cur = 0, max = 0, rested = 0, pending = 0, incomplete = 0, quests = 0 }
-local session = { started = false, start = 0, xp = 0, lastXP = 0, lastMax = 0 }
+local stats = { cur = 0, max = 0, rested = 0, turnIn = 0, inProgress = 0, quests = 0 }
+local session = { started = false, start = 0, xp = 0, lastXP = 0, lastMax = 0, lastLevel = 0 }
 local played = { total = 0, level = 0, at = 0 }
 
 local function Locked()
@@ -65,15 +65,15 @@ fill:SetColorTexture(1, 1, 1, 1)
 bar:SetStatusBarTexture(fill)
 bar:SetStatusBarColor(COL_XP[1], COL_XP[2], COL_XP[3])
 
--- orange: completed quests awaiting turn-in
+-- orange: turn-in XP
 local questTex = bar:CreateTexture(nil, "OVERLAY", nil, 1)
 questTex:SetColorTexture(COL_QUEST[1], COL_QUEST[2], COL_QUEST[3], 0.95)
 questTex:Hide()
 
--- faded orange: quests still in progress
-local incompleteTex = bar:CreateTexture(nil, "OVERLAY", nil, 2)
-incompleteTex:SetColorTexture(COL_QUEST[1], COL_QUEST[2], COL_QUEST[3], 0.40)
-incompleteTex:Hide()
+-- faded orange: in-progress quest XP
+local inProgressTex = bar:CreateTexture(nil, "OVERLAY", nil, 2)
+inProgressTex:SetColorTexture(COL_QUEST[1], COL_QUEST[2], COL_QUEST[3], 0.40)
+inProgressTex:Hide()
 
 -- blue: rested pool
 local restedTex = bar:CreateTexture(nil, "OVERLAY", nil, 3)
@@ -129,12 +129,12 @@ rateText:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, -5)
 local infoText = MakeText(12)
 infoText:SetPoint("TOPRIGHT", bar, "BOTTOMRIGHT", 0, -5)
 
--- Quest XP split into completed (ready to hand in) and still in progress.
+-- Quest XP split into turn-in (ready to hand in) and in-progress.
 local function QuestXP()
 	if not GetRewardXP then
 		return 0, 0, 0
 	end
-	local complete, incomplete, count = 0, 0, 0
+	local turnIn, inProgress, count = 0, 0, 0
 	for i = 1, C_QuestLog.GetNumQuestLogEntries() do
 		local info = C_QuestLog.GetInfo(i)
 		if info and not info.isHeader and info.questID then
@@ -143,15 +143,15 @@ local function QuestXP()
 				local done = (IsQuestComplete and IsQuestComplete(info.questID))
 					or C_QuestLog.ReadyForTurnIn(info.questID)
 				if done then
-					complete = complete + reward
+					turnIn = turnIn + reward
 					count = count + 1
 				else
-					incomplete = incomplete + reward
+					inProgress = inProgress + reward
 				end
 			end
 		end
 	end
-	return complete, incomplete, count
+	return turnIn, inProgress, count
 end
 
 local function SetSegment(tex, startVal, amount, max)
@@ -167,25 +167,27 @@ end
 
 local function HideAll()
 	questTex:Hide()
-	incompleteTex:Hide()
+	inProgressTex:Hide()
 	restedTex:Hide()
 	spark:Hide()
 	rateText:SetText("")
 	infoText:SetText("")
 end
 
--- Accumulate XP earned this session. A level-up resets UnitXP, so that case
--- counts the remainder of the old level plus the carryover into the new one.
-local function TrackXP(cur, max)
+-- Accumulate XP earned this session. A level-up is detected by the level
+-- itself, not by XP going down: one gain can cross a level and still leave
+-- more XP than before. That case counts the remainder of the old level plus
+-- the carryover into the new one.
+local function TrackXP(cur, max, level)
 	if not session.started then
 		return
 	end
-	if cur >= session.lastXP then
-		session.xp = session.xp + (cur - session.lastXP)
-	else
+	if level > session.lastLevel then
 		session.xp = session.xp + math.max(session.lastMax - session.lastXP, 0) + cur
+	else
+		session.xp = session.xp + math.max(cur - session.lastXP, 0)
 	end
-	session.lastXP, session.lastMax = cur, max or 0
+	session.lastXP, session.lastMax, session.lastLevel = cur, max or 0, level
 end
 
 local function PlayedTimes()
@@ -230,10 +232,10 @@ local function UpdateRate()
 end
 
 local function Update()
-	local cur, max = UnitXP("player"), UnitXPMax("player")
-	TrackXP(cur, max)
+	local cur, max, level = UnitXP("player"), UnitXPMax("player"), UnitLevel("player")
+	TrackXP(cur, max, level)
 	stats.cur, stats.max = cur, max or 0
-	stats.rested, stats.pending, stats.incomplete, stats.quests = 0, 0, 0, 0
+	stats.rested, stats.turnIn, stats.inProgress, stats.quests = 0, 0, 0, 0
 
 	if AtMaxLevel() or not max or max <= 0 then
 		-- Stay visible while unlocked so the bar can still be positioned.
@@ -245,7 +247,7 @@ local function Update()
 			bar:Show()
 			bar:SetMinMaxValues(0, 1)
 			bar:SetValue(0)
-			levelText:SetFormattedText("Level %d", UnitLevel("player"))
+			levelText:SetFormattedText("Level %d", level)
 			mainText:SetText("Max Level")
 			pctText:SetText("")
 		end
@@ -258,19 +260,19 @@ local function Update()
 	bar:SetValue(cur)
 
 	local headroom = max - cur
-	local pending, incomplete, quests = QuestXP()
-	pending = math.min(pending, headroom)
-	incomplete = math.min(incomplete, headroom - pending)
+	local turnIn, inProgress, quests = QuestXP()
+	turnIn = math.min(turnIn, headroom)
+	inProgress = math.min(inProgress, headroom - turnIn)
 	-- the full pool is reported; only the drawn segment is clamped to what fits
 	local rested = GetXPExhaustion() or 0
-	stats.rested, stats.pending, stats.incomplete, stats.quests = rested, pending, incomplete, quests
+	stats.rested, stats.turnIn, stats.inProgress, stats.quests = rested, turnIn, inProgress, quests
 
 	-- stacked in order, as the Luxthos bar does:
-	-- fill, then completed quests, then incomplete quests, then rested
-	SetSegment(questTex, cur, pending, max)
-	SetSegment(incompleteTex, cur + pending, incomplete, max)
-	SetSegment(restedTex, cur + pending + incomplete,
-		math.min(rested, headroom - pending - incomplete), max)
+	-- fill, then turn-in XP, then in-progress quest XP, then rested
+	SetSegment(questTex, cur, turnIn, max)
+	SetSegment(inProgressTex, cur + turnIn, inProgress, max)
+	SetSegment(restedTex, cur + turnIn + inProgress,
+		math.min(rested, headroom - turnIn - inProgress), max)
 
 	if cur > 0 then
 		spark:ClearAllPoints()
@@ -281,16 +283,17 @@ local function Update()
 		spark:Hide()
 	end
 
-	levelText:SetFormattedText("Level %d", UnitLevel("player"))
+	levelText:SetFormattedText("Level %d", level)
 	mainText:SetFormattedText("%s / %s (%s)", BigNum(cur), BigNum(max), BigNum(headroom))
-	if pending > 0 then
-		pctText:SetFormattedText("%.1f%% (%.1f%%)", cur / max * 100, (cur + pending) / max * 100)
+	if turnIn > 0 then
+		pctText:SetFormattedText("%.1f%% (%.1f%%)", cur / max * 100, (cur + turnIn) / max * 100)
 	else
 		pctText:SetFormattedText("%.1f%%", cur / max * 100)
 	end
+	-- "Completed" is the Luxthos wording for turn-in XP
 	infoText:SetFormattedText(
 		"Completed: |cFFFF9700%.1f%%|r - Rested: |cFF4F90FF%.1f%%|r",
-		pending / max * 100, rested / max * 100)
+		turnIn / max * 100, rested / max * 100)
 
 	UpdateRate()
 end
@@ -313,6 +316,7 @@ local function Init()
 		session.xp = 0
 		session.lastXP = UnitXP("player")
 		session.lastMax = UnitXPMax("player") or 0
+		session.lastLevel = UnitLevel("player")
 		if RequestTimePlayed and C_Timer then
 			C_Timer.After(0.5, function() RequestTimePlayed() end)
 		end
@@ -345,10 +349,10 @@ bar:SetScript("OnEnter", function(self)
 			stats.rested > 0 and BigNum(stats.rested) or "none",
 			1, 1, 1, COL_RESTED[1], COL_RESTED[2], COL_RESTED[3])
 		GameTooltip:AddDoubleLine("Quests ready to turn in",
-			format("%d  (+%s XP)", stats.quests, BigNum(stats.pending)),
+			format("%d  (+%s XP)", stats.quests, BigNum(stats.turnIn)),
 			1, 1, 1, COL_QUEST[1], COL_QUEST[2], COL_QUEST[3])
 		GameTooltip:AddDoubleLine("Quests in progress",
-			format("+%s XP", BigNum(stats.incomplete)),
+			format("+%s XP", BigNum(stats.inProgress)),
 			1, 1, 1, COL_QUEST[1], COL_QUEST[2], COL_QUEST[3])
 		GameTooltip:AddDoubleLine("Earned this session", BigNum(session.xp), 1, 1, 1, 1, 1, 1)
 	end
@@ -404,8 +408,8 @@ SlashCmdList.XPBAR = function(msg)
 	elseif msg == "unlock" then
 		db.locked = false
 	elseif msg == "debug" then
-		print(format("XPBar: xp=%d/%d rested=%d pending=%d incomplete=%d quests=%d session=%d played=%s rewardXPfn=%s isCompletefn=%s",
-			stats.cur, stats.max, stats.rested, stats.pending, stats.incomplete, stats.quests,
+		print(format("XPBar: xp=%d/%d rested=%d turnIn=%d inProgress=%d quests=%d session=%d played=%s rewardXPfn=%s isCompletefn=%s",
+			stats.cur, stats.max, stats.rested, stats.turnIn, stats.inProgress, stats.quests,
 			session.xp, tostring(played.at > 0),
 			tostring(GetRewardXP ~= nil), tostring(IsQuestComplete ~= nil)))
 		return
